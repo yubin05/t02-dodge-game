@@ -222,7 +222,7 @@
         <button type="button" id="btn-right">오른쪽 ▶</button>
       </div>
       <p class="small-note" style="text-align:center;margin-top:10px;">
-        키보드: ←/→ 이동, P 또는 Space로 일시정지·재개
+        키보드: ←/→ 이동, P 또는 Space로 일시정지·재개, R로 바로 다시 시작
       </p>
 
       <div class="card rules">
@@ -515,6 +515,7 @@
     if(e.key === "ArrowLeft"){ movePlayer(-1); e.preventDefault(); }
     else if(e.key === "ArrowRight"){ movePlayer(1); e.preventDefault(); }
     else if(e.key === "p" || e.key === "P" || e.key === " "){ togglePause(); e.preventDefault(); }
+    else if(e.key === "r" || e.key === "R"){ startRound(); e.preventDefault(); }
   });
 
   window.addEventListener("blur", pauseForBlur);
