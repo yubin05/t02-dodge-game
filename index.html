@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>30초 장애물 피하기</title>
+<style>
+  :root{
+    --bg:#fafafa;
+    --surface:#ffffff;
+    --text:#1a1a1a;
+    --muted:#4b4b4b;
+    --accent:#0b5fff;
+    --danger:#c81e1e;
+    --accent-contrast:#ffffff;
+    --border:#e2e2e2;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    line-height:1.55;
+  }
+  main{
+    max-width:900px;
+    margin:0 auto;
+    padding:24px 20px 60px;
+  }
+  h1{
+    font-size:clamp(1.4rem,3.6vw,1.9rem);
+    margin:0 0 6px;
+  }
+  p.lead{
+    color:var(--muted);
+    margin:0 0 20px;
+    max-width:70ch;
+  }
+
+  .layout{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px;
+    align-items:flex-start;
+  }
+  .stage-col{
+    flex:1 1 420px;
+    min-width:0;
+  }
+  .side-col{
+    flex:1 1 360px;
+    min-width:0;
+  }
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .card h2{
+    font-size:1.05rem;
+    margin:0 0 10px;
+  }
+
+  #stage-wrap{
+    position:relative;
+    width:100%;
+    max-width:400px;
+    aspect-ratio:400/600;
+    margin:0 auto;
+    border-radius:12px;
+    overflow:hidden;
+    background:#111827;
+    transition:transform 0.12s ease;
+  }
+  #stage-wrap.shake{
+    animation:shakeAnim 0.28s ease;
+  }
+  @keyframes shakeAnim{
+    0%,100%{transform:translateX(0);}
+    20%{transform:translateX(-8px);}
+    40%{transform:translateX(7px);}
+    60%{transform:translateX(-5px);}
+    80%{transform:translateX(4px);}
+  }
+  #stage-wrap.flash::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:rgba(200,30,30,0.45);
+    pointer-events:none;
+    animation:flashAnim 0.28s ease forwards;
+  }
+  @keyframes flashAnim{
+    0%{opacity:1;}
+    100%{opacity:0;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #stage-wrap.shake{animation:none;}
+    #stage-wrap.flash::after{animation:none;opacity:0;}
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:100%;
+  }
+
+  .status-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    max-width:400px;
+    margin:10px auto 0;
+    font-size:0.95rem;
+  }
+  #status-text{
+    font-weight:700;
+  }
+  #status-text[data-state="fail"]{color:var(--danger);}
+  #status-text[data-state="success"]{color:#0a7d33;}
+
+  .controls-row{
+    display:flex;
+    gap:8px;
+    justify-content:center;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+  button{
+    font:inherit;
+    cursor:pointer;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text);
+    padding:9px 14px;
+  }
+  button.primary{
+    background:var(--accent);
+    color:var(--accent-contrast);
+    border-color:var(--accent);
+  }
+  button:focus-visible{
+    outline:3px solid var(--accent);
+    outline-offset:2px;
+  }
+  button:disabled{
+    opacity:0.5;
+    cursor:not-allowed;
+  }
+
+  .rules{
+    font-size:0.92rem;
+  }
+  .rules dt{font-weight:700;margin-top:8px;}
+  .rules dd{margin:2px 0 0;color:var(--muted);}
+
+  .toggle-row{
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+    font-size:0.9rem;
+  }
+  .toggle-row label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:0.82rem;
+  }
+  th,td{
+    text-align:left;
+    padding:4px 6px;
+    border-bottom:1px solid var(--border);
+  }
+  #log-summary{
+    font-size:0.85rem;
+    color:var(--muted);
+    margin:8px 0;
+  }
+  #log-table-wrap{
+    max-height:220px;
+    overflow-y:auto;
+    border:1px solid var(--border);
+    border-radius:8px;
+  }
+  .small-note{
+    font-size:0.8rem;
+    color:var(--muted);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>30초 장애물 피하기</h1>
+  <p class="lead">
+    좌우로 움직여 위에서 떨어지는 장애물을 피하세요. 30초를 버티면 성공, 부딪히면 실패입니다.
+  </p>
+
+  <div class="layout">
+    <div class="stage-col">
+      <div id="stage-wrap">
+        <canvas id="game" width="400" height="600" aria-label="게임 화면"></canvas>
+      </div>
+      <div class="status-bar">
+        <span>상태: <span id="status-text" data-state="ready">대기</span></span>
+        <span>최고 생존시간: <span id="best-time">0.0</span>초</span>
+      </div>
+      <div class="controls-row">
+        <button type="button" id="btn-left">◀ 왼쪽</button>
+        <button type="button" id="btn-start" class="primary">시작 / 다시 시작</button>
+        <button type="button" id="btn-pause">일시정지</button>
+        <button type="button" id="btn-right">오른쪽 ▶</button>
+      </div>
+      <p class="small-note" style="text-align:center;margin-top:10px;">
+        키보드: ←/→ 이동, P 또는 Space로 일시정지·재개
+      </p>
+
+      <div class="card rules">
+        <h2>규칙</h2>
+        <dl>
+          <dt>핵심 조작</dt>
+          <dd>← / → 화살표 키 또는 화면의 왼쪽·오른쪽 버튼으로 한 칸씩 이동합니다.</dd>
+          <dt>성공 조건</dt>
+          <dd>장애물에 부딪히지 않고 30초를 버팁니다.</dd>
+          <dt>실패 조건</dt>
+          <dd>파란 플레이어가 빨간 장애물과 겹치면 즉시 실패합니다.</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>효과 · 접근성</h2>
+        <div class="toggle-row">
+          <label><input type="checkbox" id="chk-mute"> 음소거</label>
+          <label><input type="checkbox" id="chk-reduced"> 움직임 줄이기(화면 흔들림·깜빡임 끄기)</label>
+        </div>
+        <p class="small-note" style="margin-top:8px;">실패 시 화면 흔들림·붉은 섬광·짧은 효과음이 나갑니다. 위 옵션으로 각각 끌 수 있습니다.</p>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="card">
+        <h2>난이도 설정</h2>
+        <p class="small-note">
+          현재 난이도 값(장애물 생성 간격): <strong id="difficulty-value">700</strong> ms
+          — 코드 상단 <code>DIFFICULTY.spawnIntervalMs</code> 값을 바꿔 재실행하면 됩니다. 값이 작을수록 어렵습니다.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>플레이 기록 ( <span id="log-count">0</span>회 )</h2>
+        <p id="log-summary">아직 기록이 없습니다.</p>
+        <div id="log-table-wrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>난이도</th><th>결과</th><th>생존(초)</th></tr>
+            </thead>
+            <tbody id="log-tbody"></tbody>
+          </table>
+        </div>
+        <div class="controls-row" style="justify-content:flex-start;">
+          <button type="button" id="btn-copy-log">기록 복사</button>
+          <button type="button" id="btn-reset-save">저장 초기화</button>
+        </div>
+        <p class="small-note" id="copy-feedback" aria-live="polite"></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---- 난이도: 카드3 테스트에서 이 값 하나만 바꿔서 10회씩 비교합니다 ----
+  var DIFFICULTY = { spawnIntervalMs: 700 };
+
+  var CANVAS_W = 400, CANVAS_H = 600;
+  var PLAYER_W = 40, PLAYER_H = 20, PLAYER_Y = CANVAS_H - 40, PLAYER_STEP = 30;
+  var OBST_W = 30, OBST_H = 30, FALL_SPEED = 220; // px/sec
+  var ROUND_SECONDS = 30;
+  var SAVE_KEY = "dodge-game-save-v1";
+
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var stageWrap = document.getElementById("stage-wrap");
+  var statusText = document.getElementById("status-text");
+  var bestTimeEl = document.getElementById("best-time");
+  var difficultyValueEl = document.getElementById("difficulty-value");
+  difficultyValueEl.textContent = DIFFICULTY.spawnIntervalMs;
+
+  var chkMute = document.getElementById("chk-mute");
+  var chkReduced = document.getElementById("chk-reduced");
+  var prefersReducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  chkReduced.checked = !!prefersReducedMotion;
+
+  chkReduced.addEventListener("change", function(){
+    if(chkReduced.checked){
+      stageWrap.classList.remove("shake", "flash");
+    }
+  });
+
+  // ---- 저장 데이터: 최고기록/로그만 보존, 현재 판 값은 절대 저장하지 않음 ----
+  function loadSave(){
+    try{
+      var raw = localStorage.getItem(SAVE_KEY);
+      if(!raw) throw new Error("empty");
+      var parsed = JSON.parse(raw);
+      if(typeof parsed.highScoreSeconds !== "number" || !Array.isArray(parsed.roundLog)){
+        throw new Error("bad shape");
+      }
+      return { highScoreSeconds: parsed.highScoreSeconds, roundLog: parsed.roundLog };
+    }catch(e){
+      return { highScoreSeconds: 0, roundLog: [] };
+    }
+  }
+  function persistSave(){
+    try{
+      localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    }catch(e){ /* 저장 실패해도 게임은 계속 진행 */ }
+  }
+
+  var save = loadSave();
+  bestTimeEl.textContent = save.highScoreSeconds.toFixed(1);
+  renderLog();
+
+  // ---- 현재 판 상태 (절대 저장 안 함, 새 게임마다 초기화) ----
+  var state = "ready"; // ready | playing | success | fail
+  var paused = false;
+  var pausedByBlur = false;
+  var player = { x: CANVAS_W/2 - PLAYER_W/2 };
+  var obstacles = [];
+  var elapsed = 0;
+  var lastSpawn = 0;
+  var lastFrameTime = null;
+
+  function resetRound(){
+    state = "ready";
+    paused = false;
+    pausedByBlur = false;
+    player.x = CANVAS_W/2 - PLAYER_W/2;
+    obstacles = [];
+    elapsed = 0;
+    lastSpawn = 0;
+    lastFrameTime = null;
+    updateStatusText();
+  }
+
+  function startRound(){
+    state = "playing";
+    paused = false;
+    pausedByBlur = false;
+    player.x = CANVAS_W/2 - PLAYER_W/2;
+    obstacles = [];
+    elapsed = 0;
+    lastSpawn = 0;
+    lastFrameTime = null;
+    updateStatusText();
+  }
+
+  function updateStatusText(){
+    if(state === "ready"){
+      statusText.textContent = "대기";
+      statusText.setAttribute("data-state","ready");
+    }else if(state === "playing"){
+      statusText.textContent = paused ? "일시정지 (P 또는 Space로 재개)" : ("진행 중 " + (ROUND_SECONDS - elapsed).toFixed(1) + "초 남음");
+      statusText.setAttribute("data-state","playing");
+    }else if(state === "success"){
+      statusText.textContent = "성공! (" + elapsed.toFixed(1) + "초 생존)";
+      statusText.setAttribute("data-state","success");
+    }else if(state === "fail"){
+      statusText.textContent = "실패 (" + elapsed.toFixed(1) + "초 생존)";
+      statusText.setAttribute("data-state","fail");
+    }
+  }
+
+  function movePlayer(dir){
+    if(state !== "playing" || paused) return;
+    player.x += dir * PLAYER_STEP;
+    if(player.x < 0) player.x = 0;
+    if(player.x > CANVAS_W - PLAYER_W) player.x = CANVAS_W - PLAYER_W;
+  }
+
+  function togglePause(){
+    if(state !== "playing") return;
+    paused = !paused;
+    if(!paused){
+      pausedByBlur = false;
+      lastFrameTime = null; // 재개 시 델타타임 튐 방지
+    }
+    updateStatusText();
+  }
+
+  function pauseForBlur(){
+    if(state === "playing" && !paused){
+      paused = true;
+      pausedByBlur = true;
+      updateStatusText();
+    }
+  }
+
+  // ---- 효과: 실패 이벤트에서만 실행 ----
+  var audioCtx = null;
+  function beep(){
+    if(chkMute.checked) return;
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.value = 180;
+      gain.gain.value = 0.08;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
+    }catch(e){ /* 오디오 미지원 환경은 무시 */ }
+  }
+  function playFailEffect(){
+    beep();
+    if(!chkReduced.checked){
+      stageWrap.classList.remove("shake","flash");
+      void stageWrap.offsetWidth; // 리플레이를 위한 강제 리플로우
+      stageWrap.classList.add("shake","flash");
+    }
+  }
+
+  function endRound(result){
+    state = result; // "success" | "fail"
+    updateStatusText();
+    var seconds = Math.min(elapsed, ROUND_SECONDS);
+    if(result === "fail"){
+      playFailEffect();
+    }
+    if(seconds > save.highScoreSeconds){
+      save.highScoreSeconds = seconds;
+      bestTimeEl.textContent = seconds.toFixed(1);
+    }
+    save.roundLog.push({
+      ts: new Date().toISOString(),
+      difficulty: DIFFICULTY.spawnIntervalMs,
+      result: result,
+      seconds: Number(seconds.toFixed(2))
+    });
+    persistSave();
+    renderLog();
+  }
+
+  function renderLog(){
+    var tbody = document.getElementById("log-tbody");
+    var countEl = document.getElementById("log-count");
+    var summaryEl = document.getElementById("log-summary");
+    tbody.innerHTML = "";
+    var log = save.roundLog;
+    countEl.textContent = log.length;
+    if(log.length === 0){
+      summaryEl.textContent = "아직 기록이 없습니다.";
+    }else{
+      var seconds = log.map(function(r){ return r.seconds; }).sort(function(a,b){return a-b;});
+      var median = seconds[Math.floor(seconds.length/2)];
+      var min = seconds[0], max = seconds[seconds.length-1];
+      var fails = log.filter(function(r){ return r.result === "fail"; }).length;
+      summaryEl.textContent = "중앙값 " + median.toFixed(1) + "초 · 범위 " + min.toFixed(1) + "~" + max.toFixed(1) + "초 · 실패 " + fails + "회 / 성공 " + (log.length-fails) + "회";
+    }
+    log.slice().reverse().forEach(function(r, i){
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + (log.length - i) + "</td><td>" + r.difficulty + "</td><td>" + (r.result === "success" ? "성공" : "실패") + "</td><td>" + r.seconds.toFixed(1) + "</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById("btn-copy-log").addEventListener("click", function(){
+    var lines = ["#\t난이도\t결과\t생존(초)\t시각"];
+    save.roundLog.forEach(function(r, i){
+      lines.push((i+1) + "\t" + r.difficulty + "\t" + (r.result==="success"?"성공":"실패") + "\t" + r.seconds.toFixed(2) + "\t" + r.ts);
+    });
+    var text = lines.join("\n");
+    var feedback = document.getElementById("copy-feedback");
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        feedback.textContent = "복사됐습니다. 제출문에 붙여넣으세요.";
+      }, function(){
+        feedback.textContent = "복사에 실패했습니다. 표를 직접 선택해 복사하세요.";
+      });
+    }else{
+      feedback.textContent = "이 브라우저는 자동 복사를 지원하지 않습니다. 표를 직접 선택해 복사하세요.";
+    }
+  });
+
+  document.getElementById("btn-reset-save").addEventListener("click", function(){
+    localStorage.removeItem(SAVE_KEY);
+    save = { highScoreSeconds: 0, roundLog: [] };
+    bestTimeEl.textContent = "0.0";
+    renderLog();
+    document.getElementById("copy-feedback").textContent = "저장 데이터를 초기화했습니다.";
+  });
+
+  // ---- 입력 ----
+  document.getElementById("btn-left").addEventListener("click", function(){ movePlayer(-1); });
+  document.getElementById("btn-right").addEventListener("click", function(){ movePlayer(1); });
+  document.getElementById("btn-start").addEventListener("click", startRound);
+  document.getElementById("btn-pause").addEventListener("click", togglePause);
+
+  window.addEventListener("keydown", function(e){
+    if(e.repeat) return; // 키를 누르고 있어도 한 번 누른 것만 한 번 반영
+    if(e.key === "ArrowLeft"){ movePlayer(-1); e.preventDefault(); }
+    else if(e.key === "ArrowRight"){ movePlayer(1); e.preventDefault(); }
+    else if(e.key === "p" || e.key === "P" || e.key === " "){ togglePause(); e.preventDefault(); }
+  });
+
+  window.addEventListener("blur", pauseForBlur);
+  document.addEventListener("visibilitychange", function(){
+    if(document.hidden) pauseForBlur();
+  });
+
+  // ---- 게임 루프 (delta-time 기반, 10분 연속 실행에도 안전) ----
+  function frame(now){
+    requestAnimationFrame(frame);
+
+    if(lastFrameTime === null){ lastFrameTime = now; }
+    var dt = (now - lastFrameTime) / 1000;
+    if(dt > 0.25) dt = 0.25; // 탭 비활성 복귀 등 큰 델타 방지
+    lastFrameTime = now;
+
+    if(state === "playing" && !paused){
+      elapsed += dt;
+
+      lastSpawn += dt * 1000;
+      if(lastSpawn >= DIFFICULTY.spawnIntervalMs){
+        lastSpawn = 0;
+        obstacles.push({ x: Math.random() * (CANVAS_W - OBST_W), y: -OBST_H });
+      }
+
+      for(var i = obstacles.length - 1; i >= 0; i--){
+        obstacles[i].y += FALL_SPEED * dt;
+        if(obstacles[i].y > CANVAS_H){
+          obstacles.splice(i, 1);
+          continue;
+        }
+        if(rectsOverlap(player.x, PLAYER_Y, PLAYER_W, PLAYER_H, obstacles[i].x, obstacles[i].y, OBST_W, OBST_H)){
+          endRound("fail");
+          break;
+        }
+      }
+
+      if(state === "playing" && elapsed >= ROUND_SECONDS){
+        endRound("success");
+      }
+
+      updateStatusText();
+    }
+
+    draw();
+  }
+
+  function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){
+    return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(player.x, PLAYER_Y, PLAYER_W, PLAYER_H);
+
+    ctx.fillStyle = "#dc2626";
+    obstacles.forEach(function(o){
+      ctx.fillRect(o.x, o.y, OBST_W, OBST_H);
+    });
+
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "16px sans-serif";
+    if(state === "ready"){
+      ctx.fillText("시작 버튼을 누르세요", 90, CANVAS_H/2);
+    }else if(state === "success"){
+      ctx.fillText("성공! 다시 시작을 눌러보세요", 60, CANVAS_H/2);
+    }else if(state === "fail"){
+      ctx.fillText("실패! 다시 시작을 눌러보세요", 60, CANVAS_H/2);
+    }
+  }
+
+  resetRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
